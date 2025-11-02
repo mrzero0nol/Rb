@@ -380,6 +380,42 @@
     opacity: 1;
     transform: scale(1);
   }
+  .saved-config-list {
+    margin-top: 16px;
+    max-height: 150px;
+    overflow-y: auto;
+    border-top: 1px solid var(--card-border);
+    padding-top: 10px;
+  }
+  .saved-config-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    border-radius: 6px;
+    margin-bottom: 6px;
+    background: #1a0a0a;
+  }
+  .saved-config-details {
+    overflow: hidden;
+  }
+  .saved-config-details span {
+    display: block;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 12px;
+  }
+  .saved-config-details span.name {
+    font-weight: bold;
+    color: #fff;
+    font-size: 14px;
+  }
+  .saved-config-actions button {
+    padding: 4px 8px;
+    font-size: 11px;
+    margin-left: 5px;
+  }
 </style>
 </head>
 <body>
@@ -485,11 +521,11 @@
       <div class="controls" style="margin-top: 20px;">
         <div>
           <label for="frontDomain">Front Domain</label>
-          <input id="frontDomain" value="df.game.naver.com" />
+          <input id="frontDomain" value="" placeholder="e.g., cdn.example.com" />
         </div>
         <div>
           <label for="sni">SNI</label>
-          <input id="sni" value="df.game.naver.com.redbunny.dpdns.org" />
+          <input id="sni" value="" placeholder="e.g., bug.example.com" />
         </div>
         <div>
           <label for="hostHeader">Host Header (optional)</label>
@@ -500,6 +536,8 @@
           <input id="cfTlsPort" type="number" min="1" max="65535" value="443" />
         </div>
       </div>
+      <button id="saveSniBtn" class="secondary" style="width:100%; margin-top: 16px;">Save Current SNI/FD</button>
+      <div id="savedSniList" class="saved-config-list"></div>
       <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--card-border);">
         <label>Account Types</label>
         <div style="display:flex; gap:16px; align-items:center;">
@@ -518,6 +556,31 @@
       <div class="country-list" id="countryList">
         <!-- Countries will be populated by JS -->
       </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="editSniModal">
+    <div class="modal-content">
+      <span class="modal-close" id="editSniModalCloseBtn">&times;</span>
+      <h2>Edit SNI/FD Config</h2>
+      <form id="editSniForm">
+        <input type="hidden" id="editSniId">
+        <div class="controls" style="margin-top: 20px;">
+          <div>
+            <label for="editSniName">Name</label>
+            <input id="editSniName" required>
+          </div>
+          <div>
+            <label for="editFrontDomain">Front Domain</label>
+            <input id="editFrontDomain" required>
+          </div>
+          <div>
+            <label for="editSniValue">SNI</label>
+            <input id="editSniValue" required>
+          </div>
+        </div>
+        <button type="submit" style="width:100%; margin-top: 24px;">Save Changes</button>
+      </form>
     </div>
   </div>
 
@@ -594,6 +657,34 @@ function populateCountryFilter() {
         });
         countryList.appendChild(item);
     }
+}
+
+// --- SNI/FD Config Storage ---
+let SAVED_SNI_CONFIGS = [];
+
+const saveSniBtn = $("#saveSniBtn");
+const savedSniList = $("#savedSniList");
+const editSniModal = $("#editSniModal");
+const editSniModalCloseBtn = $("#editSniModalCloseBtn");
+const editSniForm = $("#editSniForm");
+
+
+function getSavedSniConfigs() {
+  try {
+    const data = localStorage.getItem('savedSniConfigs');
+    return data ? JSON.parse(data) : [];
+  } catch (e) {
+    console.error("Failed to parse saved SNI configs", e);
+    return [];
+  }
+}
+
+function saveSniConfigs() {
+  try {
+    localStorage.setItem('savedSniConfigs', JSON.stringify(SAVED_SNI_CONFIGS));
+  } catch (e) {
+    console.error("Failed to save SNI configs", e);
+  }
 }
 
 // --- Core Functions ---
@@ -734,6 +825,33 @@ function render() {
   const slice = FILTERED_ITEMS.slice(start, start + PAGE_SIZE);
 
   proxyGrid.innerHTML = ''; // Clear grid
+}
+
+function renderSavedSniConfigs() {
+    savedSniList.innerHTML = '';
+    if (SAVED_SNI_CONFIGS.length === 0) {
+        savedSniList.innerHTML = '<p style="text-align:center; font-size: 12px; padding: 10px 0;">No saved configs.</p>';
+        return;
+    }
+
+    SAVED_SNI_CONFIGS.forEach(config => {
+        const item = document.createElement('div');
+        item.className = 'saved-config-item';
+        item.dataset.id = config.id;
+        item.innerHTML = `
+            <div class="saved-config-details">
+                <span class="name">${escapeHtml(config.name)}</span>
+                <span>FD: ${escapeHtml(config.frontDomain)}</span>
+                <span>SNI: ${escapeHtml(config.sni)}</span>
+            </div>
+            <div class="saved-config-actions">
+                <button class="secondary use-sni-btn">Use</button>
+                <button class="secondary edit-sni-btn">Edit</button>
+                <button class="secondary delete-sni-btn">Del</button>
+            </div>
+        `;
+        savedSniList.appendChild(item);
+    });
 
   if (slice.length === 0) {
     proxyGrid.innerHTML = '<p style="grid-column: 1 / -1; text-align: center;">No data found.</p>';
@@ -1051,6 +1169,78 @@ proxyGrid.addEventListener("click", (e) => {
   }
 });
 
+saveSniBtn.addEventListener("click", () => {
+  const frontDomain = $("#frontDomain").value.trim();
+  const sni = $("#sni").value.trim();
+
+  if (!frontDomain || !sni) {
+    alert("Front Domain and SNI fields cannot be empty.");
+    return;
+  }
+
+  const name = prompt("Enter a name for this configuration:", "My Config");
+  if (name) {
+    SAVED_SNI_CONFIGS.unshift({
+      id: crypto.randomUUID(),
+      name: name.trim(),
+      frontDomain,
+      sni
+    });
+    saveSniConfigs();
+    renderSavedSniConfigs();
+  }
+});
+
+savedSniList.addEventListener("click", (e) => {
+  const target = e.target;
+  const item = target.closest('.saved-config-item');
+  if (!item) return;
+
+  const id = item.dataset.id;
+  const config = SAVED_SNI_CONFIGS.find(c => c.id === id);
+  if (!config) return;
+
+  if (target.classList.contains('use-sni-btn')) {
+    $("#frontDomain").value = config.frontDomain;
+    $("#sni").value = config.sni;
+  } else if (target.classList.contains('edit-sni-btn')) {
+    $("#editSniId").value = config.id;
+    $("#editSniName").value = config.name;
+    $("#editFrontDomain").value = config.frontDomain;
+    $("#editSniValue").value = config.sni;
+    openModal(editSniModal);
+  } else if (target.classList.contains('delete-sni-btn')) {
+    if (confirm(`Are you sure you want to delete "${config.name}"?`)) {
+      SAVED_SNI_CONFIGS = SAVED_SNI_CONFIGS.filter(c => c.id !== id);
+      saveSniConfigs();
+      renderSavedSniConfigs();
+    }
+  }
+});
+
+editSniModalCloseBtn.addEventListener("click", () => closeModal(editSniModal));
+editSniModal.addEventListener("click", (e) => {
+    if (e.target === editSniModal) closeModal(editSniModal);
+});
+
+editSniForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const id = $("#editSniId").value;
+  const index = SAVED_SNI_CONFIGS.findIndex(c => c.id === id);
+  if (index > -1) {
+    SAVED_SNI_CONFIGS[index] = {
+      id,
+      name: $("#editSniName").value.trim(),
+      frontDomain: $("#editFrontDomain").value.trim(),
+      sni: $("#editSniValue").value.trim()
+    };
+    saveSniConfigs();
+    renderSavedSniConfigs();
+    closeModal(editSniModal);
+  }
+});
+
+
 // --- Visual Viewport Correction for Virtual Keyboard ---
 function handleViewportChange() {
   const activeModalOverlay = document.querySelector('.modal-overlay.active');
@@ -1082,6 +1272,8 @@ function setupViewportListener() {
 }
 
 // Initial Load
+SAVED_SNI_CONFIGS = getSavedSniConfigs();
+renderSavedSniConfigs();
 loadData();
 setupViewportListener();
 
