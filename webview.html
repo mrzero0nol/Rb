@@ -146,6 +146,29 @@
     color: var(--muted);
     font-family: 'Courier New', Courier, monospace;
   }
+  .proxy-card-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    display: flex;
+    gap: 5px;
+  }
+  .proxy-card-btn {
+    background: rgba(0,0,0,0.4);
+    color: #fff;
+    border: none;
+    border-radius: 5px;
+    padding: 3px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  .proxy-card-btn:hover {
+    background: var(--accent);
+  }
+  .proxy-card-btn.delete:hover {
+    background: #ff4040;
+  }
   .proxy-card.selected .proxy-card-ip {
       color: rgba(255,255,255,0.9);
   }
@@ -381,13 +404,37 @@
     <div class="panel">
       <div class="badges" style="justify-content: space-between; align-items:center; margin-bottom: 16px;">
         <span class="pill" id="pillTotal">Total: 0</span>
-        <button id="selectAllBtn" class="secondary" style="padding: 6px 12px; font-size: 13px;">Select All Visible</button>
+        <button id="addCustomProxyBtn" class="secondary" style="padding: 6px 12px; font-size: 13px;">Add Custom Proxy</button>
         <span class="pill" id="pillSelected">Selected: 0</span>
       </div>
        <div class="proxy-grid-container">
         <div id="proxyGrid" class="proxy-grid"></div>
       </div>
       <div class="counts" id="counts"></div>
+    </div>
+    <div class="modal-overlay" id="customProxyModal">
+      <div class="modal-content">
+        <span class="modal-close" id="customProxyModalCloseBtn">&times;</span>
+        <h2 id="customProxyModalTitle">Add Custom Proxy</h2>
+        <form id="customProxyForm">
+          <input type="hidden" id="customProxyId" value="">
+          <div class="controls" style="margin-top: 20px;">
+            <div>
+              <label for="customProxyName">Name</label>
+              <input id="customProxyName" placeholder="e.g., My Server" required />
+            </div>
+            <div>
+              <label for="customProxyIp">IP Address</label>
+              <input id="customProxyIp" placeholder="e.g., 1.1.1.1" required />
+            </div>
+            <div>
+              <label for="customProxyPort">Port</label>
+              <input id="customProxyPort" type="number" placeholder="e.g., 443" required />
+            </div>
+          </div>
+          <button type="submit" style="width:100%; margin-top: 24px;">Save Proxy</button>
+        </form>
+      </div>
     </div>
     <div class="modal-overlay" id="resultsModal">
     <div class="modal-content">
@@ -477,6 +524,7 @@ const $ = s => document.querySelector(s);
 const PAGE_SIZE = 200;
 
 let ALL_ITEMS = [];
+let CUSTOM_ITEMS = [];
 let FILTERED_ITEMS = [];
 let SELECTED = new Map(); // key => {ip, port, label}
 let currentPage = 1;
@@ -484,7 +532,7 @@ let currentPage = 1;
 // Element Refs
 const elSearch = $("#search");
 const proxyGrid = $("#proxyGrid");
-const selectAllBtn = $("#selectAllBtn");
+const addCustomProxyBtn = $("#addCustomProxyBtn");
 const elCounts = $("#counts");
 const elPillTotal = $("#pillTotal");
 const elPillSelected = $("#pillSelected");
@@ -504,13 +552,17 @@ const countrySelector = $("#countrySelector");
 const countryList = $("#countryList");
 const selectedCountryEl = $("#selectedCountry");
 const closeCountryModalBtn = $("#countryModalCloseBtn");
+const customProxyModal = $("#customProxyModal");
+const customProxyModalCloseBtn = $("#customProxyModalCloseBtn");
+const customProxyForm = $("#customProxyForm");
 
 
 // --- Helper Functions ---
 let selectedCountry = 'all';
 
 function populateCountryFilter() {
-    const countries = new Set(ALL_ITEMS.map(item => item.country));
+    const combinedItems = [...CUSTOM_ITEMS, ...ALL_ITEMS];
+    const countries = new Set(combinedItems.map(item => item.country).filter(Boolean));
     const sortedCountries = ['All Countries', ...[...countries].sort()];
 
     countryList.innerHTML = ''; // Clear previous list
@@ -600,7 +652,30 @@ function sanitizeLabel(label) {
   return label;
 }
 
+// --- Custom Proxy Storage ---
+function getCustomProxies() {
+  try {
+    const data = localStorage.getItem('customProxies');
+    const proxies = data ? JSON.parse(data) : [];
+    return proxies.map(p => ({...p, id: p.id || crypto.randomUUID(), isCustom: true}));
+  } catch (e) {
+    console.error("Failed to parse custom proxies from localStorage", e);
+    return [];
+  }
+}
+
+function saveCustomProxies() {
+  try {
+    // Don't save the isCustom flag
+    const toSave = CUSTOM_ITEMS.map(({ isCustom, ...rest }) => rest);
+    localStorage.setItem('customProxies', JSON.stringify(toSave));
+  } catch (e) {
+    console.error("Failed to save custom proxies to localStorage", e);
+  }
+}
+
 async function loadData() {
+  CUSTOM_ITEMS = getCustomProxies();
   const proxyUrl = "https://raw.githubusercontent.com/mrzero0nol/My-v2ray/refs/heads/main/proxyList.txt";
   showModalBtn.disabled = true;
   showModalBtn.textContent = 'Loading...';
@@ -627,7 +702,8 @@ async function loadData() {
 function filterData() {
   const q = elSearch.value.trim().toLowerCase();
 
-  let items = ALL_ITEMS;
+  const combinedItems = [...CUSTOM_ITEMS, ...ALL_ITEMS];
+  let items = combinedItems;
 
   if (selectedCountry !== 'all') {
     items = items.filter(x => x.country === selectedCountry);
@@ -646,7 +722,7 @@ function filterData() {
   render();
 }
 
-function keyOf(x) { return x.ip + ':' + x.port; }
+function keyOf(x) { return x.isCustom ? x.id : (x.ip + ':' + x.port); }
 
 function render() {
   const total = FILTERED_ITEMS.length;
@@ -668,13 +744,27 @@ function render() {
         card.classList.add('selected');
       }
       card.dataset.key = k;
+
+      let customControls = '';
+      if (it.isCustom) {
+          customControls = `
+              <div class="proxy-card-controls">
+                  <button class="proxy-card-btn edit" data-id="${it.id}">Edit</button>
+                  <button class="proxy-card-btn delete" data-id="${it.id}">Delete</button>
+              </div>
+          `;
+      }
+
       card.innerHTML =
-        '<div class="proxy-card-country">' + escapeHtml(it.country) + '</div>' +
+        customControls +
+        '<div class="proxy-card-country">' + escapeHtml(it.country || (it.isCustom ? 'CUSTOM' : 'Unknown')) + '</div>' +
         '<div class="proxy-card-label" title="' + escapeHtml(it.label) + '">' + (it.label ? escapeHtml(it.label) : '(No Name)') + '</div>' +
         '<div class="proxy-card-ip">' + it.ip + ':' + it.port + '</div>';
 
-      card.addEventListener('click', () => {
-        toggleSelection(card, it);
+      card.addEventListener('click', (e) => {
+        if (!e.target.classList.contains('proxy-card-btn')) {
+          toggleSelection(card, it);
+        }
       });
       proxyGrid.appendChild(card);
     });
@@ -870,19 +960,73 @@ document.querySelectorAll("button[data-copy]").forEach(b => {
   });
 });
 
-selectAllBtn.addEventListener("click", () => {
-    const slice = FILTERED_ITEMS.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-    // Cek apakah semua kartu yang terlihat sudah dipilih. Jika ya, batalkan pilihan semua. Jika tidak, pilih semua.
-    const allVisibleSelected = slice.every(it => SELECTED.has(keyOf(it)));
+addCustomProxyBtn.addEventListener("click", () => {
+  customProxyForm.reset();
+  $("#customProxyId").value = "";
+  $("#customProxyModalTitle").textContent = "Add Custom Proxy";
+  customProxyModal.classList.add("active");
+});
 
-    slice.forEach(it => {
-        if (allVisibleSelected) {
-            SELECTED.delete(keyOf(it));
-        } else {
-            SELECTED.set(keyOf(it), it);
-        }
-    });
-    render();
+customProxyModalCloseBtn.addEventListener("click", () => customProxyModal.classList.remove("active"));
+customProxyModal.addEventListener("click", (e) => {
+    if (e.target === customProxyModal) customProxyModal.classList.remove("active");
+});
+
+customProxyForm.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const id = $("#customProxyId").value;
+  const newProxy = {
+    id: id || crypto.randomUUID(),
+    label: $("#customProxyName").value.trim(),
+    ip: $("#customProxyIp").value.trim(),
+    port: parseInt($("#customProxyPort").value, 10),
+    isCustom: true,
+    country: 'CUSTOM'
+  };
+
+  if (!isIPv4(newProxy.ip) || !newProxy.port) {
+    alert("Invalid IP address or port.");
+    return;
+  }
+
+  if (id) {
+    // Editing
+    const index = CUSTOM_ITEMS.findIndex(p => p.id === id);
+    if (index > -1) {
+      CUSTOM_ITEMS[index] = newProxy;
+    }
+  } else {
+    // Adding
+    CUSTOM_ITEMS.unshift(newProxy);
+  }
+
+  saveCustomProxies();
+  filterData(); // This will re-render
+  customProxyModal.classList.remove("active");
+});
+
+proxyGrid.addEventListener("click", (e) => {
+  const target = e.target;
+  const id = target.dataset.id;
+  if (!id) return;
+
+  if (target.classList.contains("edit")) {
+    const proxy = CUSTOM_ITEMS.find(p => p.id === id);
+    if (proxy) {
+      $("#customProxyId").value = proxy.id;
+      $("#customProxyName").value = proxy.label;
+      $("#customProxyIp").value = proxy.ip;
+      $("#customProxyPort").value = proxy.port;
+      $("#customProxyModalTitle").textContent = "Edit Custom Proxy";
+      customProxyModal.classList.add("active");
+    }
+  } else if (target.classList.contains("delete")) {
+    if (confirm("Are you sure you want to delete this proxy?")) {
+      CUSTOM_ITEMS = CUSTOM_ITEMS.filter(p => p.id !== id);
+      saveCustomProxies();
+      filterData();
+    }
+  }
 });
 
 // Initial Load
