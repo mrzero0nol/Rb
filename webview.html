@@ -19,6 +19,9 @@
     font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     color: var(--muted);
   }
+  body.modal-open {
+    overflow: hidden;
+  }
   .container{max-width:1200px; margin:0 auto; padding:16px;}
   header{
     text-align:center;
@@ -204,9 +207,9 @@
   .modal-overlay {
     position: fixed;
     top: 0;
+    bottom: 0;
     left: 0;
-    width: 100%;
-    height: 100%;
+    right: 0;
     background: rgba(0,0,0,0.7);
     display: none;
     align-items: center;
@@ -906,6 +909,17 @@ function handleGenerate() {
   }
 }
 
+// --- Modal Control ---
+function openModal(modal) {
+  modal.classList.add('active');
+  document.body.classList.add('modal-open');
+}
+
+function closeModal(modal) {
+  modal.classList.remove('active');
+  document.body.classList.remove('modal-open');
+}
+
 // --- Event Listeners ---
 elSearch.addEventListener("input", () => {
   clearTimeout(window.__deb);
@@ -917,29 +931,29 @@ showModalBtn.addEventListener("click", () => {
     alert("Please select at least one proxy before generating.");
     return;
   }
-  generateModal.classList.add("active");
+  openModal(generateModal);
 });
 
-closeModalBtn.addEventListener("click", () => generateModal.classList.remove("active"));
+closeModalBtn.addEventListener("click", () => closeModal(generateModal));
 generateModal.addEventListener("click", (e) => {
-  if (e.target === generateModal) generateModal.classList.remove("active");
+  if (e.target === generateModal) closeModal(generateModal);
 });
 
-showSearchModalBtn.addEventListener("click", () => searchModal.classList.add("active"));
-closeSearchModalBtn.addEventListener("click", () => searchModal.classList.remove("active"));
+showSearchModalBtn.addEventListener("click", () => openModal(searchModal));
+closeSearchModalBtn.addEventListener("click", () => closeModal(searchModal));
 searchModal.addEventListener("click", (e) => {
-    if (e.target === searchModal) searchModal.classList.remove("active");
+    if (e.target === searchModal) closeModal(searchModal);
 });
 
-closeResultsModalBtn.addEventListener("click", () => resultsModal.classList.remove("active"));
+closeResultsModalBtn.addEventListener("click", () => closeModal(resultsModal));
 resultsModal.addEventListener("click", (e) => {
-    if (e.target === resultsModal) resultsModal.classList.remove("active");
+    if (e.target === resultsModal) closeModal(resultsModal);
 });
 
-countrySelector.addEventListener("click", () => countryModal.classList.add("active"));
-closeCountryModalBtn.addEventListener("click", () => countryModal.classList.remove("active"));
+countrySelector.addEventListener("click", () => openModal(countryModal));
+closeCountryModalBtn.addEventListener("click", () => closeModal(countryModal));
 countryModal.addEventListener("click", (e) => {
-    if (e.target === countryModal) countryModal.classList.remove("active");
+    if (e.target === countryModal) closeModal(countryModal);
 });
 
 confirmGenerateBtn.addEventListener("click", handleGenerate);
@@ -964,12 +978,12 @@ addCustomProxyBtn.addEventListener("click", () => {
   customProxyForm.reset();
   $("#customProxyId").value = "";
   $("#customProxyModalTitle").textContent = "Add Custom Proxy";
-  customProxyModal.classList.add("active");
+  openModal(customProxyModal);
 });
 
-customProxyModalCloseBtn.addEventListener("click", () => customProxyModal.classList.remove("active"));
+customProxyModalCloseBtn.addEventListener("click", () => closeModal(customProxyModal));
 customProxyModal.addEventListener("click", (e) => {
-    if (e.target === customProxyModal) customProxyModal.classList.remove("active");
+    if (e.target === customProxyModal) closeModal(customProxyModal);
 });
 
 customProxyForm.addEventListener("submit", (e) => {
@@ -1002,7 +1016,7 @@ customProxyForm.addEventListener("submit", (e) => {
 
   saveCustomProxies();
   filterData(); // This will re-render
-  customProxyModal.classList.remove("active");
+  closeModal(customProxyModal);
 });
 
 proxyGrid.addEventListener("click", (e) => {
@@ -1018,7 +1032,7 @@ proxyGrid.addEventListener("click", (e) => {
       $("#customProxyIp").value = proxy.ip;
       $("#customProxyPort").value = proxy.port;
       $("#customProxyModalTitle").textContent = "Edit Custom Proxy";
-      customProxyModal.classList.add("active");
+      openModal(customProxyModal);
     }
   } else if (target.classList.contains("delete")) {
     if (confirm("Are you sure you want to delete this proxy?")) {
