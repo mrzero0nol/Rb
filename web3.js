@@ -36,7 +36,7 @@ const PROXY_SOURCES = [
 // Default UI
 const DEFAULTS = {
   frontDomain: "df.game.naver.com",
-  sni: "df.game.naver.com.ukonskypea.dpdns.org",
+  sni: "df.game.naver.com.redbunny.dpdns.org",
   hostHeader: "",
   cfTlsPort: 443,
   genTrojan: true,
