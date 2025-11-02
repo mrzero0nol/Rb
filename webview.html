@@ -19,9 +19,6 @@
     font-family: 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
     color: var(--muted);
   }
-  body.modal-open {
-    overflow: hidden;
-  }
   .container{max-width:1200px; margin:0 auto; padding:16px;}
   header{
     text-align:center;
@@ -227,6 +224,8 @@
     width: 90%;
     max-width: 500px;
     position: relative;
+    max-height: 85vh;
+    overflow-y: auto;
   }
   .modal-close {
     position: absolute;
@@ -899,8 +898,8 @@ function handleGenerate() {
     $("#outVless").value = vlessList.join("\n");
     $("#outCombined").value = combined;
 
-    generateModal.classList.remove("active");
-    resultsModal.classList.add("active");
+    closeModal(generateModal);
+    openModal(resultsModal);
   } catch (err) {
     alert("Failed to generate: " + err.message);
   } finally {
@@ -909,15 +908,18 @@ function handleGenerate() {
   }
 }
 
-// --- Modal Control ---
-function openModal(modal) {
-  modal.classList.add('active');
-  document.body.classList.add('modal-open');
+// --- Modal Handling with Viewport Awareness ---
+function openModal(modalElement) {
+    if (!modalElement) return;
+    modalElement.classList.add('active');
+    // Call handler immediately to adjust for a keyboard that might already be open.
+    handleViewportChange();
 }
 
-function closeModal(modal) {
-  modal.classList.remove('active');
-  document.body.classList.remove('modal-open');
+function closeModal(modalElement) {
+    if (modalElement) {
+        modalElement.classList.remove('active');
+    }
 }
 
 // --- Event Listeners ---
@@ -1043,8 +1045,35 @@ proxyGrid.addEventListener("click", (e) => {
   }
 });
 
+// --- Visual Viewport Correction for Virtual Keyboard ---
+function handleViewportChange() {
+  const activeModalContent = document.querySelector('.modal-overlay.active .modal-content');
+  if (!activeModalContent) return;
+
+  const viewport = window.visualViewport;
+  if (!viewport) return;
+
+  const availableHeight = viewport.height;
+  const windowHeight = window.innerHeight;
+
+  // If viewport height is significantly smaller than window height, assume keyboard is open.
+  if (availableHeight < windowHeight * 0.9) { // Using 0.9 as a threshold
+      activeModalContent.style.maxHeight = (availableHeight - 40) + 'px'; // 40px buffer
+  } else {
+      // Keyboard is likely closed, revert to CSS default by removing the inline style
+      activeModalContent.style.maxHeight = '';
+  }
+}
+
+function setupViewportListener() {
+    if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', handleViewportChange);
+    }
+}
+
 // Initial Load
 loadData();
+setupViewportListener();
 
 window.addEventListener('DOMContentLoaded', () => {
   const splash = document.getElementById('splash-screen');
