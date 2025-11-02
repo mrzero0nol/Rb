@@ -919,6 +919,12 @@ function openModal(modalElement) {
 function closeModal(modalElement) {
     if (modalElement) {
         modalElement.classList.remove('active');
+        // Reset any inline styles that might have been added by viewport handler
+        modalElement.style.alignItems = '';
+        const content = modalElement.querySelector('.modal-content');
+        if (content) {
+            content.style.maxHeight = '';
+        }
     }
 }
 
@@ -1047,7 +1053,9 @@ proxyGrid.addEventListener("click", (e) => {
 
 // --- Visual Viewport Correction for Virtual Keyboard ---
 function handleViewportChange() {
-  const activeModalContent = document.querySelector('.modal-overlay.active .modal-content');
+  const activeModalOverlay = document.querySelector('.modal-overlay.active');
+  if (!activeModalOverlay) return;
+  const activeModalContent = activeModalOverlay.querySelector('.modal-content');
   if (!activeModalContent) return;
 
   const viewport = window.visualViewport;
@@ -1058,10 +1066,12 @@ function handleViewportChange() {
 
   // If viewport height is significantly smaller than window height, assume keyboard is open.
   if (availableHeight < windowHeight * 0.9) { // Using 0.9 as a threshold
-      activeModalContent.style.maxHeight = (availableHeight - 40) + 'px'; // 40px buffer
+    activeModalOverlay.style.alignItems = 'flex-start';
+    activeModalContent.style.maxHeight = (availableHeight - 40) + 'px'; // 40px buffer
   } else {
-      // Keyboard is likely closed, revert to CSS default by removing the inline style
-      activeModalContent.style.maxHeight = '';
+    // Keyboard is likely closed, revert to CSS default by removing the inline style
+    activeModalOverlay.style.alignItems = '';
+    activeModalContent.style.maxHeight = '';
   }
 }
 
